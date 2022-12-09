@@ -72,14 +72,55 @@ func setDNSServerForWindows(primaryDNS string, secondaryDNS string) {
 	}
 }
 
+func setDNSServerForMacOS(primaryDNS string, secondaryDNS string) {
+	// Command to Get the currently Active Interface IP and Device Name
+	getActiveInterfaceNameCommand := "netstat -rn | awk '($1 == \"default\") {print $4; exit}'"
+	cmd := exec.Command("bash", "-c", getActiveInterfaceNameCommand)
+
+	var stderr, stdout bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		fmt.Println("Error" + stderr.String())
+		log.Fatal(stderr.String())
+	}
+
+	activeInterfaceDevice := strings.TrimSpace(stdout.String())
+	if activeInterfaceDevice == "" {
+		log.Fatal("Unable to get primary network interface")
+	}
+
+	// Get the Actual Name of the Interface using the device name
+	getInterfaceNameCommand := fmt.Sprintf("networksetup -listallhardwareports | grep -B1 \"Device: %s\\$\" | sed -n 's/^Hardware Port: //p'", activeInterfaceDevice)
+	fmt.Println(getInterfaceNameCommand)
+	cmdRun := exec.Command("bash", "-c", getInterfaceNameCommand)
+
+	var interfaceNameStderr, interfaceNameStdout bytes.Buffer
+	cmdRun.Stderr = &interfaceNameStderr
+	cmdRun.Stdout = &interfaceNameStdout
+	if err := cmdRun.Run(); err != nil {
+		log.Fatal(stderr.String())
+	}
+	activeInterfaceName := strings.TrimSpace(interfaceNameStdout.String())
+	fmt.Println("Output ", activeInterfaceName)
+
+	setDNSCmd := exec.Command("networksetup", "-setdnsservers", activeInterfaceName, primaryDNS, secondaryDNS)
+	if err := setDNSCmd.Run(); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Custom DNS server updated for Interface: ", activeInterfaceName)
+}
+
 func main() {
-	primaryDNS := "1.1.1.1"
+	primaryDNS := "8.8.8.8"
 	secondaryDNS := "8.8.4.4"
 
 	fmt.Println("Current OS: ", runtime.GOOS)
 	switch runtime.GOOS {
 	case "windows":
 		setDNSServerForWindows(primaryDNS, secondaryDNS)
+	case "darwin":
+		setDNSServerForMacOS(primaryDNS, secondaryDNS)
 	default:
 		log.Fatal("OS not supported")
 	}
